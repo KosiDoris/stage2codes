@@ -1,0 +1,44 @@
+ssh genomics@5.tcp.eu.ngrok.io -p 18496
+mkdir -p Kosi/stage2
+cd Kosi/stage2
+mkdir raw_reads
+wget https://zenodo.org/record/2582555/files/SLGFSK-N_231335_r1_chr5_12_17.fastq.gz -O SLGFSK-N_r1_chr5_12_17.fastq.gz
+wget https://zenodo.org/record/2582555/files/SLGFSK-N_231335_r2_chr5_12_17.fastq.gz -O SLGFSK-N_r2_chr5_12_17.fastq.gz
+wget https://zenodo.org/record/2582555/files/SLGFSK-T_231336_r1_chr5_12_17.fastq.gz -O SLGFSK-T_r1_chr5_12_17.fastq.gz
+wget https://zenodo.org/record/2582555/files/SLGFSK-T_231336_r2_chr5_12_17.fastq.gz -O SLGFSK-T_r2_chr5_12_17.fastq.gz
+mv SLGFSK-N_r1_chr5_12_17.fastq.gz  raw_reads/
+mv SLGFSK-N_r2_chr5_12_17.fastq.gz raw_reads/
+mv SLGFSK-T_r1_chr5_12_17.fastq.gz raw_reads/
+mv SLGFSK-T_r2_chr5_12_17.fastq.gz raw_reads/
+mkdir QC_Reports
+fastqc raw_reads/*fastq.gz -o QC_Reports
+mv trim.sh raw_reads/
+bash trim.sh
+mkdir reference
+wget https://zenodo.org/record/2582555/files/hg19.chr5_12_17.fa.gz > reference
+gunzip hg19.chr5_12_17.fa.gz
+head reference/hg19.chr5_12_17.fa
+mkdir -p results/sam/bam/bcf/vcf
+bwa index reference/hg19.chr5_12_17.fa
+bwa mem reference/hg19.chr5_12_17.fa raw_reads/trimmed/SLGFSK-N_r1_chr5_12_17.fastq.gz raw_reads/trimmed/SLGFSK-N_r2_chr5_12_17.fastq.gz > results/sam/SLGFSK-N.aligned.sam
+bwa mem reference/hg19.chr5_12_17.fa raw_reads/trimmed/SLGFSK-T_r1_chr5_12_17.fastq.gz raw_reads/trimmed/SLGFSK-T_r2_chr5_12_17.fastq.gz > results/sam/SLGFSK-N.aligned.sam
+samtools view -S -b results/sam/SLGFSK-N.aligned.sam > results/bam/SLGFSK-N.aligned.bam
+samtools view -S -b results/sam/SLGFSK-T.aligned.sam > results/bam/SLGFSK-T.aligned.bam
+samtools sort -o results/bam/SLGFSK-N.aligned.sorted.bam results/bam/SLGFSK-N.aligned.bam
+samtools sort -o results/bam/SLGFSK-T.aligned.sorted.bam results/bam/SLGFSK-T.aligned.bam
+samtools flagstat results/bam/SLGFSK-N.aligned.sorted.bam
+samtools flagstat results/bam/SLGFSK-T.aligned.sorted.bam
+bcftools mpileup -O b -o results/bcf/SLGFSK-N_raw.bcf \-f reference/hg19.chr5_12_17.fa results/bam/SLGFSK-N.aligned.sorted.bam
+bcftools mpileup -O b -o results/bcf/SLGFSK-T_raw.bcf \-f reference/hg19.chr5_12_17.fa results/bam/SLGFSK-T.aligned.sorted.bam
+bcftools call --ploidy 1 -m -v -o results/vcf/SLGFSK-N_variants.vcf results/bcf/SLGFSK-N_raw.bcf
+bcftools call --ploidy 1 -m -v -o results/vcf/SLGFSK-T_variants.vcf results/bcf/SLGFSK-T_raw.bcf
+vcfutils.pl varFilter results/vcf/SLGFSK-N_variants.vcf  > results/vcf/SLGFSK-N_final_variants.vcf
+vcfutils.pl varFilter results/vcf/SLGFSK-T_variants.vcf  > results/vcf/SLGFSK-T_final_variants.vcf
+less -S results/vcf/SLGFSK-N_final_variants.vcf
+less -S results/vcf/SLGFSK-T_final_variants.vcf
+grep -v "#" results/vcf/SLGFSK-N_final_variants.vcf | wc -l
+grep -v "#" results/vcf/SLGFSK-T_final_variants.vcf | wc -l
+samtools index results/bam/SLGFSK-N.aligned.sorted.bam
+samtools index results/bam/SLGFSK-T.aligned.sorted.bam
+samtools tview results/bam/SLGFSK-N.aligned.sorted.bam reference/hg19.chr5_12_17.fa
+samtools tview results/bam/SLGFSK-T.aligned.sorted.bam reference/hg19.chr5_12_17.fa
